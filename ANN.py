@@ -14,14 +14,10 @@ from scikeras.wrappers import KerasRegressor
 
 
 
-# remote_sensing_data = 'D:/Graduation/data/Sentinel-2/Sentinel2_fullEL.tiff'
-# remote_sensing_data = 'D:/Graduation/data/ASTER/ASTER_fullEL2.tiff'
-# remote_sensing_data = 'D:/Graduation/data/Landsat-8/Landsat8_fullEL.tiff'
-remote_sensing_data = 'D:/Graduation/data/Integration/RF_Integration.tiff'
-# remote_sensing_data = 'D:/Graduation/data/Integration/Full_Integration.tiff'
-sampleData = 'D:/Graduation/data/samples_point_exp.shp'
-trainDirectory = 'D:/Graduation/data/Geological/training.shp'
-testDirectory = 'D:/Graduation/data/Geological/testing.shp'
+from config import *
+
+
+##the paths of the study area data (remote_sensing_data, trainDirectory, testDirectory) are defined in config.py
 
 ##use the Data-preprocessing file to manipulate the data as ML input
 band_data, img_as_array = rs_preprocessing(remote_sensing_data, reshape=True)
@@ -49,9 +45,10 @@ x_test, y_test = dataFitting(remote_sensing_data,band_data, testDirectory)
 reset_random_seeds()
 
 #Defining the model structure as function to be used for Grid Search
+#the input shape is the number of bands, taken from the data so it works with the stack of any study area
 def define_model (neurons_num=64, activation='relu', learning_rate=0.01):
     model = Sequential()
-    model.add(Flatten(input_shape=(16,)))
+    model.add(Flatten(input_shape=(x_train.shape[1],)))
     model.add(Dense(neurons_num, activation=activation))
     model.add(Dense(neurons_num, activation=activation))
     model.add(Dropout(0.5))
@@ -81,7 +78,7 @@ grid = GridSearchCV(estimator=model1, param_grid=param_grid, scoring='neg_mean_s
 model = grid.fit(x_train, y_train)
 print('best result', model.best_score_, 'from', model.best_params_)
 df = pd.DataFrame(model.cv_results_)
-# df.to_excel('D:/Graduation/data/Integration/output_FullIN/sta/ANN_sta_Neurons.xlsx')
+# df.to_excel(os.path.join(statisticsDirectory, 'ANN_sta_Neurons.xlsx'))
 columns = df.columns.values.tolist()
 print(columns)
 df_sorted = df[['param_learning_rate', 'param_neurons_num', 'param_batch_size', 'mean_test_score']]
@@ -168,7 +165,7 @@ plt.title('classification masked')
 plt.show()
 
 ##save the output as tiff if you like the results
-# output_image = 'D:/Graduation/data/Integration/output_RFIN/ANN_RFInt.tiff'
+# output_image = os.path.join(outputDirectory, 'ANN_{}.tiff'.format(area_name))
 # write_raster(remote_sensing_data, class_prediction, band_data, output_image)
 
 

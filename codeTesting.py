@@ -1,9 +1,8 @@
 from Data_preprocessing import rs_preprocessing, dataFitting
+from config import remote_sensing_data, trainDirectory
 
-landsat = 'D:/programes/dataset/aster-finalstack2.tif'
-band_data1, img_as_array1 = rs_preprocessing(landsat, reshape=True)
+band_data1, img_as_array1 = rs_preprocessing(remote_sensing_data, reshape=True)
 
-train_ds = 'D:/programes/qgis/train_reg.shp'
-x_train, y_train = dataFitting(landsat, band_data1, train_ds)
+x_train, y_train = dataFitting(remote_sensing_data, band_data1, trainDirectory)
 print(x_train)
 print(y_train)

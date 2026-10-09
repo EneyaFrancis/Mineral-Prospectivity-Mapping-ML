@@ -13,17 +13,14 @@ from sklearn.model_selection import cross_val_score, GridSearchCV
 from sklearn.metrics import roc_curve, roc_auc_score, confusion_matrix, cohen_kappa_score, classification_report
 
 
-# remote_sensing_data = 'D:/Graduation/data/ASTER/ASTER_fullEL2.tiff'
-# remote_sensing_data = 'D:/Graduation/data/Sentinel-2/Sentinel2_fullEL.tiff'
-# remote_sensing_data = 'D:/Graduation/data/Landsat-8/Landsat8_fullEL.tiff'
-remote_sensing_data = 'D:/Graduation/data/Integration/RF_Integration.tiff'
-# remote_sensing_data = 'D:/Graduation/data/Integration/Full_Integration.tiff'
-trainingDS = 'D:/Graduation/data/Geological/training.shp'
-testingDS = 'D:/Graduation/data/Geological/testing.shp'
+from config import *
+
+
+##the paths of the study area data (remote_sensing_data, trainDirectory, testDirectory) are defined in config.py
 
 band_data, img_as_array = rs_preprocessing(remote_sensing_data, reshape=True)
-x_train, y_train = dataFitting(remote_sensing_data, band_data, trainingDS)
-x_test, y_test = dataFitting(remote_sensing_data,band_data, testingDS)
+x_train, y_train = dataFitting(remote_sensing_data, band_data, trainDirectory)
+x_test, y_test = dataFitting(remote_sensing_data,band_data, testDirectory)
 # print(x_train)
 # print(x_test)
 
@@ -52,9 +49,10 @@ print(cnn_reshaped.shape, cnn_test_reshaped.shape)
 reset_random_seeds()
 
 
+#the input shape is the number of bands, taken from the data so it works with the stack of any study area
 def define_model (neurons_num=16, activation='relu', learning_rate=0.01, kernel=16):
     model = Sequential()
-    model.add(Conv1D(kernel, 3, activation='relu', kernel_initializer='random_normal', input_shape=(16, 1)))
+    model.add(Conv1D(kernel, 3, activation='relu', kernel_initializer='random_normal', input_shape=(cnn_reshaped.shape[1], 1)))
     model.add(MaxPooling1D(2))
     model.add(Conv1D(kernel, 3, activation='relu'))
     # model.add(MaxPooling1D(2))
@@ -97,7 +95,7 @@ model = grid.fit(cnn_reshaped, y_train)
 
 print('best result', model.best_score_, 'from', model.best_params_)
 df = pd.DataFrame(model.cv_results_)
-# df.to_excel('D:/Graduation/data/Integration/output_FullIN/sta/CNN_sta_Batch.xlsx')
+# df.to_excel(os.path.join(statisticsDirectory, 'CNN_sta_Batch.xlsx'))
 
 
 cnn_predictions = model.predict(cnn_test_reshaped)
@@ -179,8 +177,7 @@ plt.title('classification masked')
 plt.show()
 
 
-# output_image = 'D:/Graduation/data/Integration/output_FullIN/CNN_FullInt2.tiff'
-output_image = 'D:/Graduation/data/Integration/output_RFIN/CNN_RFInt.tiff'
+output_image = os.path.join(outputDirectory, 'CNN_{}.tiff'.format(area_name))
 write_raster(remote_sensing_data, class_prediction, band_data, output_image)
 
 del model1

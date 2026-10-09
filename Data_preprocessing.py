@@ -5,6 +5,8 @@
 
 from osgeo import gdal
 from osgeo import ogr
+from osgeo import osr
+from config import *
 import tensorflow as tf
 import numpy as np
 import geopandas as gpd
@@ -49,10 +51,13 @@ def rs_preprocessing (data, reshape=True):
 # the next function accept shapefile data contains points as target variables samples
 # the target value must be in attribute called value and values are binary (0,1)
 # 1 represents that the target mineral exist and vice versa
+# the points are reprojected to the projection of the study area (area_epsg in config.py) so they match the stacked data
 # the function splits the data into train and test datasets and save them separately in two files
 
 def target_variable (data, trainDirectory, testDirectory, tarinPercent=0.8):
     gdf = gpd.read_file(data)
+    if area_epsg is not None:
+        gdf = gdf.to_crs(epsg=area_epsg)
     # def condition(dataframe):
     #     if dataframe['value'] == 1:
     #         value = 3
@@ -64,7 +69,7 @@ def target_variable (data, trainDirectory, testDirectory, tarinPercent=0.8):
     # gdf['raster'] = gdf.apply(condition, axis=1)
     gdf['raster'] = np.where(gdf['Value'] == 0, 1, 2)
     print(gdf.head)
-    gdf_train = gdf.sample(frac=tarinPercent)
+    gdf_train = gdf.sample(frac=tarinPercent, random_state=random_seed)
     gdf_test = gdf.drop(gdf_train.index)
     print('gdf shape', gdf.shape, 'training', gdf_train.shape, 'test', gdf_test.shape)
     gdf_train.to_file(trainDirectory)
@@ -83,6 +88,10 @@ def dataFitting (RSData, band_data, SHfile):
     RS_ds = gdal.Open(RSData)
     train_ds = ogr.Open(SHfile)
     lyr = train_ds.GetLayer()
+    # the points and the stacked data must have the same projection, otherwise the points fall in the wrong pixels
+    raster_srs = osr.SpatialReference(wkt=RS_ds.GetProjectionRef())
+    if lyr.GetSpatialRef() is not None and not raster_srs.IsSame(lyr.GetSpatialRef()):
+        print('Warning: the projection of {} is not the same as the stacked data'.format(SHfile))
     driver = gdal.GetDriverByName('MEM')
     target_ds = driver.Create('', RS_ds.RasterXSize, RS_ds.RasterYSize, 1, gdal.GDT_UInt16)
     target_ds.SetGeoTransform(RS_ds.GetGeoTransform())
@@ -140,10 +149,10 @@ def cnn_input(dataset):
     return dataset
 
 def reset_random_seeds():
-   os.environ['PYTHONHASHSEED']=str(1)
-   tf.random.set_seed(1)
-   np.random.seed(1)
-   random.seed(1)
+   os.environ['PYTHONHASHSEED']=str(random_seed)
+   tf.random.set_seed(random_seed)
+   np.random.seed(random_seed)
+   random.seed(random_seed)
 
 
 def write_raster(RSData, modelPrediction, band_data, savedDirectory):
@@ -151,6 +160,7 @@ def write_raster(RSData, modelPrediction, band_data, savedDirectory):
     cols = band_data.shape[1]
     rows = band_data.shape[0]
     modelPrediction.astype(np.float16)
+    os.makedirs(os.path.dirname(savedDirectory), exist_ok=True)  ##creates the output folder if it does not exist
     driver = gdal.GetDriverByName("gtiff")
     outdata = driver.Create(savedDirectory, cols, rows, 1, gdal.GDT_Float32)
     outdata.SetGeoTransform(RS_ds.GetGeoTransform())  ##sets same geotransform as input
@@ -161,10 +171,8 @@ def write_raster(RSData, modelPrediction, band_data, savedDirectory):
 
 def main():
     print("This is the main code to test above functions")
-    landsat = 'D:/programes/dataset/aster-finalstack2.tif'
-    band_data1, img_as_array1 = rs_preprocessing(landsat, reshape=True)
-    train_ds = 'D:/programes/qgis/train_reg.shp'
-    x_train, y_train = dataFitting(landsat, band_data1, train_ds)
+    band_data1, img_as_array1 = rs_preprocessing(remote_sensing_data, reshape=True)
+    x_train, y_train = dataFitting(remote_sensing_data, band_data1, trainDirectory)
     print(x_train)
     print(y_train)
 

@@ -1,0 +1,3 @@
+# the Malawi data and the output maps are large, so they are kept out of git
+data/
+__pycache__/

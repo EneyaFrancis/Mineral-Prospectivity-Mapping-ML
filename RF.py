@@ -11,17 +11,13 @@ import os
 import random
 
 
-# remote_sensing_data = 'D:/Graduation/data/Sentinel-2/Sentinel2_fullEL.tiff'
-# remote_sensing_data = 'D:/Graduation/data/Landsat-8/Landsat8_fullEL.tiff'
-remote_sensing_data = 'D:/Graduation/data/Integration/RF_Integration.tiff'
-# remote_sensing_data = 'D:/Graduation/data/Integration/Full_Integration.tiff'
-sampleData = 'D:/Graduation/data/samples_point_exp.shp'
-trainDirectory = 'D:/Graduation/data/Geological/training.shp'
-testDirectory = 'D:/Graduation/data/Geological/testing.shp'
-# trainingDS = 'D:/programes/qgis/train_reg.shp'
-# testingDS = 'D:/programes/qgis/test_reg.shp'
+from config import *
 
-# target_variable(sampleData, trainDirectory, testDirectory, 0.7)
+
+##the paths of the study area data (remote_sensing_data, sampleData, trainDirectory, testDirectory) are defined in config.py
+##run target_variable once to split the samples of the study area into training and testing files
+
+# target_variable(sampleData, trainDirectory, testDirectory, trainPercent)
 
 
 band_data, img_as_array = rs_preprocessing(remote_sensing_data, reshape=True)
@@ -54,9 +50,7 @@ rfmodel = grid.fit(x_train, y_train)
 print('best result', rfmodel.best_score_, 'from', rfmodel.best_params_)
 df = pd.DataFrame(rfmodel.cv_results_)
 df_sorted = df[['param_min_samples_split', 'param_n_estimators', 'mean_test_score']]
-# df.to_excel('D:/Graduation/data/Sentinel-2/output/sta/RF_sta.xlsx')
-# df.to_excel('D:/Graduation/data/Integration/output_RFIN/sta/RF_sta.xlsx')
-# df.to_excel('D:/Graduation/data/Integration/output_FullIN/sta/RF_sta.xlsx')
+# df.to_excel(os.path.join(statisticsDirectory, 'RF_sta.xlsx'))
 # print(df_sorted)
 
 
@@ -92,11 +86,9 @@ plot = sns.heatmap(table, annot=True, fmt='d', cmap="Blues")
 # plot = sns.heatmap(table, annot=True, cmap='viridis')
 plt.show()
 
-# feature_importance = pd.DataFrame(rf.feature_importances_, columns=['importance'])
-# featureName = ['NE_Fualt', 'NW_Fualt', 'Lineament', 'Intrusion', 'PC4_Argillic', 'PC4_Phyllic', 'PC3_Propylitic', 'PC4_OHbearing', 'PC2_IronOides',
-#                'BR_2/1', 'BR_4/5', 'BR_4/6', 'BR_4/7', 'RBD1_Argillic', 'RBD2_Phyllic', 'RBD3', 'RBD4',
-#                'ALI', 'CLI', 'KAI', 'OHI', 'MNF1', 'MNF2', 'MNF3', 'MNF4']
-# feature_importance['Name'] = featureName
+# the importance is taken from the best model of the grid search, and the band names are defined in config.py
+# feature_importance = pd.DataFrame(rfmodel.best_estimator_.feature_importances_, columns=['importance'])
+# feature_importance['Name'] = band_names
 # features_order = feature_importance.sort_values(by='importance', ascending=False)
 #
 #
@@ -156,9 +148,7 @@ plt.title('classification masked')
 
 plt.show()
 #
-# output_image = 'D:/Graduation/data/Sentinel-2/output/RF2_Sentinel2.tiff'
-# output_image = 'D:/Graduation/data/Integration/output_FullIN/RF_FullInt.tiff'
-output_image = 'D:/Graduation/data/Integration/output_RFIN/RF_RFInt.tiff'
+output_image = os.path.join(outputDirectory, 'RF_{}.tiff'.format(area_name))
 write_raster(remote_sensing_data, class_prediction, band_data, output_image)
 
 del rfmodel

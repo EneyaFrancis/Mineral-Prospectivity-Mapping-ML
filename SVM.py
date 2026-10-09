@@ -6,13 +6,10 @@ import pandas as pd
 import seaborn as sns
 from sklearn.model_selection import cross_val_score, GridSearchCV
 
-# remote_sensing_data = 'D:/Graduation/data/Sentinel-2/Sentinel2_fullEL.tiff'
-# remote_sensing_data = 'D:/Graduation/data/Landsat-8/Landsat8_fullEL.tiff'
-remote_sensing_data = 'D:/Graduation/data/Integration/RF_Integration.tiff'
-# remote_sensing_data = 'D:/Graduation/data/Integration/Full_Integration.tiff'
-sampleData = 'D:/Graduation/data/samples_point_exp.shp'
-trainDirectory = 'D:/Graduation/data/Geological/training.shp'
-testDirectory = 'D:/Graduation/data/Geological/testing.shp'
+from config import *
+
+
+##the paths of the study area data (remote_sensing_data, trainDirectory, testDirectory) are defined in config.py
 
 band_data, img_as_array = rs_preprocessing(remote_sensing_data, reshape=True)
 x_train, y_train = dataFitting(remote_sensing_data, band_data, trainDirectory)
@@ -34,10 +31,7 @@ grid = GridSearchCV(estimator=svm, param_grid=param_dictionary, scoring='neg_mea
 model = grid.fit(x_train, y_train)
 print('best result', model.best_score_, 'from', model.best_params_)
 df = pd.DataFrame(model.cv_results_)
-# df.to_excel('D:/Graduation/data/Sentinel-2/output/sta/SVM_sta.xlsx')
-# df.to_excel('D:/Graduation/data/Landsat-8/output/sta/SVM_sta.xlsx')
-# df.to_excel('D:/Graduation/data/Integration/output_RFIN/sta/SVM_sta.xlsx')
-# df.to_excel('D:/Graduation/data/Integration/output_FullIN/sta/SVM_sta.xlsx')
+# df.to_excel(os.path.join(statisticsDirectory, 'SVM_sta.xlsx'))
 
 y_predicted = model.predict(x_test)
 round_prediction = [round(i) for i in y_predicted]
@@ -111,10 +105,7 @@ plt.title('classification masked')
 
 plt.show()
 
-# output_image = 'D:/Graduation/data/Sentinel-2/output/SVM_Sentinel2.tiff'
-# output_image = 'D:/Graduation/data/Landsat-8/output/SVM_Landsat8.tiff'
-# output_image = 'D:/Graduation/data/Integration/output_FullIN/SVM_FullInt.tiff'
-output_image = 'D:/Graduation/data/Integration/output_RFIN/SVM_RFInt.tiff'
+output_image = os.path.join(outputDirectory, 'SVM_{}.tiff'.format(area_name))
 write_raster(remote_sensing_data, class_prediction, band_data, output_image)
 
 del model
