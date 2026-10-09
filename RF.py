@@ -103,39 +103,13 @@ plt.show()
 # fig.tight_layout()
 # plt.show()
 
-try:
-    class_prediction = rfmodel.predict(img_as_array)
-except MemoryError:
-    slices = int(round(len(img_as_array) / 2))
-    test = True
-    while test == True:
-        try:
-            class_preds = list()
-
-            temp = rfmodel.predict(img_as_array[0:slices + 1, :])
-            class_preds.append(temp)
-
-            for i in range(slices, len(img_as_array), slices):
-                print('{} %, derzeit: {}'.format((i * 100) / (len(img_as_array)), i))
-                temp = rfmodel.predict(img_as_array[i + 1:i + (slices + 1), :])
-                class_preds.append(temp)
-
-        except MemoryError as error:
-            slices = slices / 2
-            print('Not enought RAM, new slices = {}'.format(slices))
-
-        else:
-            test = False
-else:
-    print('Class prediction was successful without slicing!')
+class_prediction = predict_image(rfmodel, img_as_array)
 
 class_prediction = class_prediction.reshape(band_data[:, :, 0].shape)
 print('Reshaped back to {}'.format(class_prediction.shape))
 
-mask = np.copy(band_data[:,:,0])
-mask[mask > 0.0] = 1.0 # all actual pixels have a value of 1.0
+mask = data_mask(band_data) # all actual pixels have a value of 1.0 and the empty pixels 0
 
-class_prediction.astype(np.float16)
 class_prediction_ = class_prediction*mask
 
 plt.subplot(121)
@@ -149,6 +123,6 @@ plt.title('classification masked')
 plt.show()
 #
 output_image = os.path.join(outputDirectory, 'RF_{}.tiff'.format(area_name))
-write_raster(remote_sensing_data, class_prediction, band_data, output_image)
+write_raster(remote_sensing_data, class_prediction_, band_data, output_image)  ##the masked prediction is saved, the empty pixels are 0
 
 del rfmodel

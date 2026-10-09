@@ -15,6 +15,10 @@ band_data, img_as_array = rs_preprocessing(remote_sensing_data, reshape=True)
 x_train, y_train = dataFitting(remote_sensing_data, band_data, trainDirectory)
 x_test, y_test = dataFitting(remote_sensing_data,band_data, testDirectory)
 
+##scale the bands when use_scaling is True in the area settings (the scaling is learned from x_train only)
+if use_scaling:
+    x_train, x_test, img_as_array = scale_features(x_train, x_test, img_as_array)
+
 reset_random_seeds()
 
 svm = SVR(kernel='rbf')
@@ -33,7 +37,8 @@ print('best result', model.best_score_, 'from', model.best_params_)
 df = pd.DataFrame(model.cv_results_)
 # df.to_excel(os.path.join(statisticsDirectory, 'SVM_sta.xlsx'))
 
-y_predicted = model.predict(x_test)
+##SVR can predict values below 0 or above 1, so the predictions are kept between 0 and 1
+y_predicted = np.clip(model.predict(x_test), 0, 1)
 round_prediction = [round(i) for i in y_predicted]
 
 print(y_predicted)
@@ -60,39 +65,13 @@ plot = sns.heatmap(table, annot=True, fmt='d', cmap="Blues")
 # plot = sns.heatmap(table, annot=True, cmap='viridis')
 plt.show()
 
-try:
-    class_prediction = model.predict(img_as_array)
-except MemoryError:
-    slices = int(round(len(img_as_array) / 2))
-    test = True
-    while test == True:
-        try:
-            class_preds = list()
-
-            temp = model.predict(img_as_array[0:slices + 1, :])
-            class_preds.append(temp)
-
-            for i in range(slices, len(img_as_array), slices):
-                print('{} %, derzeit: {}'.format((i * 100) / (len(img_as_array)), i))
-                temp = model.predict(img_as_array[i + 1:i + (slices + 1), :])
-                class_preds.append(temp)
-
-        except MemoryError as error:
-            slices = slices / 2
-            print('Not enought RAM, new slices = {}'.format(slices))
-
-        else:
-            test = False
-else:
-    print('Class prediction was successful without slicing!')
+class_prediction = np.clip(predict_image(model, img_as_array), 0, 1)
 
 class_prediction = class_prediction.reshape(band_data[:, :, 0].shape)
 print('Reshaped back to {}'.format(class_prediction.shape))
 
-mask = np.copy(band_data[:,:,0])
-mask[mask > 0.0] = 1.0 # all actual pixels have a value of 1.0
+mask = data_mask(band_data) # all actual pixels have a value of 1.0 and the empty pixels 0
 
-class_prediction.astype(np.float16)
 class_prediction_ = class_prediction*mask
 
 plt.subplot(121)
@@ -106,6 +85,6 @@ plt.title('classification masked')
 plt.show()
 
 output_image = os.path.join(outputDirectory, 'SVM_{}.tiff'.format(area_name))
-write_raster(remote_sensing_data, class_prediction, band_data, output_image)
+write_raster(remote_sensing_data, class_prediction_, band_data, output_image)  ##the masked prediction is saved, the empty pixels are 0
 
 del model

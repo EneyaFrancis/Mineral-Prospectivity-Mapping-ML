@@ -15,6 +15,13 @@ dataRoot = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 # None means the points are used as they are, without reprojection
 area_epsg = None
 
+# the part of the stacked data used for the study, the stack and the samples are cut to it
+# area_boundary is a shapefile (polygon) inside the area folder, it gives the exact shape of the study area
+# area_extent is a rectangle (min longitude, min latitude, max longitude, max latitude) in WGS 84
+# the boundary is used if both are given, None means the whole stack is used
+area_boundary = None
+area_extent = None
+
 
 
 # the files inside the area folder, the stacked data used as feature predictors and the samples of ore deposit
@@ -31,6 +38,10 @@ band_names = []
 
 # the percentage of samples used for training, the rest is used for testing
 trainPercent = 0.8
+
+# scale the bands to the same range before training SVM, ANN and CNN
+# needed when the stack mixes layers with different units (e.g. magnetics in nT and reflectance from 0 to 1)
+use_scaling = True
 
 # the seed of the random functions, so the code gives the same results every time it runs
 random_seed = 1

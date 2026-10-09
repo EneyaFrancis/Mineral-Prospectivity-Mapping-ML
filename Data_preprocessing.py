@@ -21,23 +21,48 @@ driverTiff = gdal.GetDriverByName('GTiff')
 
 
 
+# this function opens the stacked data, if the study area has a boundary or an extent in its settings
+# the stack is cut to that area in memory (as VRT), so the original file is not changed
+# all the functions which open the stacked data use it, so they all work on the same pixels
+def open_stack(data):
+    rs_ds = gdal.Open(data)
+    if rs_ds is None:
+        raise FileNotFoundError('the stacked data could not be opened: {}'.format(data))
+    if area_boundary is not None:
+        # the pixels outside the boundary are set to 0 (no data)
+        rs_ds = gdal.Warp('', rs_ds, format='VRT', cutlineDSName=boundaryDirectory, cropToCutline=True, dstNodata=0)
+    elif area_extent is not None:
+        # the extent is in longitude and latitude (WGS 84)
+        minx, miny, maxx, maxy = area_extent
+        rs_ds = gdal.Translate('', rs_ds, format='VRT', projWin=[minx, maxy, maxx, miny], projWinSRS='EPSG:4326')
+    return rs_ds
+
+
+
 # this function for opening the stacked data to extract the x_train and x_test
 # as well and reshaping the image to become as np array
+# the nodata values of the bands are changed to NaN and then to 0, so empty pixels are always 0
 def rs_preprocessing (data, reshape=True):
-    rs_ds = gdal.Open(data)
+    rs_ds = open_stack(data)
     nbands = rs_ds.RasterCount
     band_data = []
     print('bands', rs_ds.RasterCount, 'rows', rs_ds.RasterYSize, 'columns',
           rs_ds.RasterXSize)
+    if len(band_names) > 0 and len(band_names) != nbands:
+        print('Warning: {} band names are given in the area settings but the stack has {} bands'.format(
+            len(band_names), nbands))
     for i in range(1, nbands + 1):
-        band = rs_ds.GetRasterBand(i).ReadAsArray()
+        band = rs_ds.GetRasterBand(i).ReadAsArray().astype(np.float32)
+        nodata = rs_ds.GetRasterBand(i).GetNoDataValue()
+        if nodata is not None:
+            band[band == nodata] = np.nan
         band_data.append(band)
     band_data = np.dstack(band_data)
     print(band_data.shape)
 
     if reshape == True:
         new_shape = (band_data.shape[0] * band_data.shape[1], band_data.shape[2])
-        img_as_array = band_data[:, :, :np.int(band_data.shape[2])].reshape(new_shape)
+        img_as_array = band_data[:, :, :int(band_data.shape[2])].reshape(new_shape)
         print('Reshaped from {o} to {n}'.format(o=band_data.shape, n=img_as_array.shape))
         img_as_array = np.nan_to_num(img_as_array)
         return band_data, img_as_array
@@ -51,11 +76,21 @@ def rs_preprocessing (data, reshape=True):
 # the next function accept shapefile data contains points as target variables samples
 # the target value must be in attribute called value and values are binary (0,1)
 # 1 represents that the target mineral exist and vice versa
+# only the points inside the study area (area_boundary or area_extent in the area settings) are kept
 # the points are reprojected to the projection of the study area (area_epsg in config.py) so they match the stacked data
 # the function splits the data into train and test datasets and save them separately in two files
 
 def target_variable (data, trainDirectory, testDirectory, tarinPercent=0.8):
     gdf = gpd.read_file(data)
+    if gdf.crs is None:
+        raise ValueError('the samples {} have no projection (.prj file), set it in QGIS first'.format(data))
+    if area_boundary is not None:
+        boundary = gpd.read_file(boundaryDirectory).to_crs(gdf.crs)
+        gdf = gdf[gdf.within(boundary.union_all())]
+    elif area_extent is not None:
+        minx, miny, maxx, maxy = area_extent
+        inside = gdf.to_crs(epsg=4326).cx[minx:maxx, miny:maxy].index
+        gdf = gdf.loc[inside]
     if area_epsg is not None:
         gdf = gdf.to_crs(epsg=area_epsg)
     # def condition(dataframe):
@@ -69,9 +104,12 @@ def target_variable (data, trainDirectory, testDirectory, tarinPercent=0.8):
     # gdf['raster'] = gdf.apply(condition, axis=1)
     gdf['raster'] = np.where(gdf['Value'] == 0, 1, 2)
     print(gdf.head)
+    print('samples inside the study area', gdf.shape[0], 'with the mineral', (gdf['Value'] == 1).sum(),
+          'without the mineral', (gdf['Value'] == 0).sum())
     gdf_train = gdf.sample(frac=tarinPercent, random_state=random_seed)
     gdf_test = gdf.drop(gdf_train.index)
     print('gdf shape', gdf.shape, 'training', gdf_train.shape, 'test', gdf_test.shape)
+    os.makedirs(os.path.dirname(trainDirectory), exist_ok=True)
     gdf_train.to_file(trainDirectory)
     gdf_test.to_file(testDirectory)
     print('train data saved to: {}'.format(trainDirectory))
@@ -85,8 +123,10 @@ def target_variable (data, trainDirectory, testDirectory, tarinPercent=0.8):
 # (3) the directory of the training or testing dataset
 # function return x (variable features) and y (target variables)
 def dataFitting (RSData, band_data, SHfile):
-    RS_ds = gdal.Open(RSData)
+    RS_ds = open_stack(RSData)
     train_ds = ogr.Open(SHfile)
+    if train_ds is None:
+        raise FileNotFoundError('the samples could not be opened: {}'.format(SHfile))
     lyr = train_ds.GetLayer()
     # the points and the stacked data must have the same projection, otherwise the points fall in the wrong pixels
     raster_srs = osr.SpatialReference(wkt=RS_ds.GetProjectionRef())
@@ -105,8 +145,10 @@ def dataFitting (RSData, band_data, SHfile):
     print('class values', classes)
     n_samples = (data > 0).sum()
     print('{n} training samples'.format(n=n_samples))
+    if n_samples == 0:
+        raise ValueError('no samples of {} fall inside the stacked data, check the projection and the study area'.format(SHfile))
     idx = np.nonzero(truth)
-    x = band_data[idx]
+    x = np.nan_to_num(band_data[idx])
     y = truth[idx] - 1
     # def condition(dataframe):
     #     if dataframe == 3:
@@ -117,6 +159,9 @@ def dataFitting (RSData, band_data, SHfile):
     #         value = 0
     #     return value
     # y = list(map(condition, truth[idx]))
+    empty_samples = (x == 0).all(axis=1).sum()
+    if empty_samples > 0:
+        print('Warning: {} samples are on empty pixels (no data) of the stacked data'.format(empty_samples))
     print('Our X matrix is sized: {sz}'.format(sz=x.shape))
     print('Our y array is sized: {sz}'.format(sz=np.shape(y)))
 
@@ -155,11 +200,50 @@ def reset_random_seeds():
    random.seed(random_seed)
 
 
+# the next function scales the features so all the bands have mean 0 and standard deviation 1
+# the scaling is learned from the training data only, then the same scaling is applied to the other data
+# it is needed for SVM, ANN and CNN when the bands have different units (e.g. magnetics and reflectance)
+def scale_features(x_train, *others):
+    mean = x_train.mean(axis=0)
+    std = x_train.std(axis=0)
+    std[std == 0] = 1  # a band with one value only is not divided by 0
+    return [(x_train - mean) / std] + [(data - mean) / std for data in others]
+
+
+# the next function predicts all the pixels of the image
+# if the RAM is not enough the image is predicted in slices and the slices are joined together
+def predict_image(model, img_as_array):
+    try:
+        class_prediction = model.predict(img_as_array)
+        print('Class prediction was successful without slicing!')
+    except MemoryError:
+        slices = int(round(len(img_as_array) / 2))
+        while True:
+            try:
+                class_preds = list()
+                for i in range(0, len(img_as_array), slices):
+                    print('{} %, current: {}'.format((i * 100) / (len(img_as_array)), i))
+                    class_preds.append(model.predict(img_as_array[i:i + slices]))
+                class_prediction = np.concatenate(class_preds)
+                break
+            except MemoryError:
+                slices = max(1, int(slices / 2))
+                print('Not enought RAM, new slices = {}'.format(slices))
+    return np.asarray(class_prediction).flatten()
+
+
+# the next function creates the mask of the pixels which contain data (1) and the empty pixels (0)
+# a pixel is empty when all its bands are no data (NaN) or 0, it works also for bands with negative values
+def data_mask(band_data):
+    mask = (np.nan_to_num(band_data) != 0).any(axis=2)
+    return mask.astype(np.float32)
+
+
 def write_raster(RSData, modelPrediction, band_data, savedDirectory):
-    RS_ds = gdal.Open(RSData)
+    RS_ds = open_stack(RSData)
     cols = band_data.shape[1]
     rows = band_data.shape[0]
-    modelPrediction.astype(np.float16)
+    modelPrediction = modelPrediction.astype(np.float32)  ##the same type as the saved raster (Float32)
     os.makedirs(os.path.dirname(savedDirectory), exist_ok=True)  ##creates the output folder if it does not exist
     driver = gdal.GetDriverByName("gtiff")
     outdata = driver.Create(savedDirectory, cols, rows, 1, gdal.GDT_Float32)

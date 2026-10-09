@@ -23,6 +23,10 @@ from config import *
 band_data, img_as_array = rs_preprocessing(remote_sensing_data, reshape=True)
 x_train, y_train = dataFitting(remote_sensing_data, band_data, trainDirectory)
 x_test, y_test = dataFitting(remote_sensing_data,band_data, testDirectory)
+
+##scale the bands when use_scaling is True in the area settings (the scaling is learned from x_train only)
+if use_scaling:
+    x_train, x_test, img_as_array = scale_features(x_train, x_test, img_as_array)
 # print(x_train)
 # print(x_test)
 
@@ -119,39 +123,13 @@ plot = sns.heatmap(table,annot=True, fmt='d', edgecolor="blue")
 plt.show()
 
 ##writing raster of the prediction
-try:
-    class_prediction = model.predict(img_as_array).flatten()
-except MemoryError:
-    slices = int(round(len(img_as_array) / 2))
-    test = True
-    while test == True:
-        try:
-            class_preds = list()
-
-            temp = model.predict(img_as_array[0:slices + 1, :])
-            class_preds.append(temp)
-
-            for i in range(slices, len(img_as_array), slices):
-                print('{} %, derzeit: {}'.format((i * 100) / (len(img_as_array)), i))
-                temp = model.predict(img_as_array[i + 1:i + (slices + 1), :])
-                class_preds.append(temp)
-
-        except MemoryError as error:
-            slices = slices / 2
-            print('Not enought RAM, new slices = {}'.format(slices))
-
-        else:
-            test = False
-else:
-    print('Class prediction was successful without slicing!')
+class_prediction = predict_image(model, img_as_array)
 
 class_prediction = class_prediction.reshape(band_data[:, :, 0].shape)
 print('Reshaped back to {}'.format(class_prediction.shape))
 
-mask = np.copy(band_data[:,:,0])
-mask[mask > 0.0] = 1.0 # all actual pixels have a value of 1.0
+mask = data_mask(band_data) # all actual pixels have a value of 1.0 and the empty pixels 0
 
-class_prediction.astype(np.float16)
 class_prediction_ = class_prediction*mask
 
 plt.subplot(121)
@@ -166,7 +144,7 @@ plt.show()
 
 ##save the output as tiff if you like the results
 # output_image = os.path.join(outputDirectory, 'ANN_{}.tiff'.format(area_name))
-# write_raster(remote_sensing_data, class_prediction, band_data, output_image)
+# write_raster(remote_sensing_data, class_prediction_, band_data, output_image)  ##the masked prediction is saved, the empty pixels are 0
 
 
 del model1

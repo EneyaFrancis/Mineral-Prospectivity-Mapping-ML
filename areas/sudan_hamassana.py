@@ -22,6 +22,9 @@ train_file = os.path.join('Geological', 'training.shp')
 test_file = os.path.join('Geological', 'testing.shp')
 output_folder = os.path.join('Integration', 'output_RFIN')
 
+# the original study trained the models without scaling the bands
+use_scaling = False
+
 # the band names used in the original RF feature importance (25 bands), they must match the chosen stack_file
 band_names = ['NE_Fualt', 'NW_Fualt', 'Lineament', 'Intrusion', 'PC4_Argillic', 'PC4_Phyllic', 'PC3_Propylitic',
               'PC4_OHbearing', 'PC2_IronOides', 'BR_2/1', 'BR_4/5', 'BR_4/6', 'BR_4/7', 'RBD1_Argillic', 'RBD2_Phyllic',

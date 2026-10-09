@@ -57,7 +57,7 @@ The Sudan area is desert with exposed rock, so satellite images show mineral alt
 
 ### Target
 
-Models are built for one deposit type at a time. The working choice is **gold in a single pilot area**, because the existing workflow already targets gold. The pilot area will be chosen once we know where reliable occurrence data exists.
+Models are built for one deposit type at a time. The working choice is **gold**, because the existing workflow already targets it. The pilot area is the **Southern Region of Malawi** (`areas/malawi_south.py`), cut from the country-wide data.
 
 ### Data to gather
 

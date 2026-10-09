@@ -21,6 +21,14 @@ from config import *
 band_data, img_as_array = rs_preprocessing(remote_sensing_data, reshape=True)
 x_train, y_train = dataFitting(remote_sensing_data, band_data, trainDirectory)
 x_test, y_test = dataFitting(remote_sensing_data,band_data, testDirectory)
+
+##scale the bands when use_scaling is True in the area settings (the scaling is learned from x_train only)
+if use_scaling:
+    x_train, x_test, img_as_array = scale_features(x_train, x_test, img_as_array)
+
+##the three Conv1D layers (kernel size 3) and the MaxPooling1D layer need at least 12 bands
+if x_train.shape[1] < 12:
+    raise ValueError('the CNN needs at least 12 bands, the stack has {}'.format(x_train.shape[1]))
 # print(x_train)
 # print(x_test)
 
@@ -66,7 +74,7 @@ def define_model (neurons_num=16, activation='relu', learning_rate=0.01, kernel=
     model.add(Dropout(0.5))
     model.add(Dense(1, activation='sigmoid'))
 
-    optimizing = Adam(lr=learning_rate)
+    optimizing = Adam(learning_rate=learning_rate)
     model.compile(loss='binary_crossentropy', optimizer=optimizing, metrics=['accuracy'])
     model.summary()
     return model
@@ -82,7 +90,7 @@ neurons_num = [64]
 # kernel = [4, 8, 16, 32, 64, 128]
 kernel = [64]
 
-model1 = KerasRegressor(build_fn=define_model, epochs=epochs,learning_rate=learning_rate, kernel=kernel,
+model1 = KerasRegressor(model=define_model, epochs=epochs,learning_rate=learning_rate, kernel=kernel,
                         batch_size=batch_size, neurons_num=neurons_num, verbose=1)
 
 
@@ -98,7 +106,7 @@ df = pd.DataFrame(model.cv_results_)
 # df.to_excel(os.path.join(statisticsDirectory, 'CNN_sta_Batch.xlsx'))
 
 
-cnn_predictions = model.predict(cnn_test_reshaped)
+cnn_predictions = model.predict(cnn_test_reshaped).flatten()
 print(cnn_predictions)
 print(y_test)
 round_prediction = [round(i) for i in cnn_predictions]
@@ -131,39 +139,13 @@ plt.show()
 
 img_as_array = cnn_input(img_as_array)
 
-try:
-    class_prediction = model.predict(img_as_array).flatten()
-except MemoryError:
-    slices = int(round(len(img_as_array) / 2))
-    test = True
-    while test == True:
-        try:
-            class_preds = list()
-
-            temp = model.predict(img_as_array[0:slices + 1, :])
-            class_preds.append(temp)
-
-            for i in range(slices, len(img_as_array), slices):
-                print('{} %, derzeit: {}'.format((i * 100) / (len(img_as_array)), i))
-                temp = model.predict(img_as_array[i + 1:i + (slices + 1), :])
-                class_preds.append(temp)
-
-        except MemoryError as error:
-            slices = slices / 2
-            print('Not enought RAM, new slices = {}'.format(slices))
-
-        else:
-            test = False
-else:
-    print('Class prediction was successful without slicing!')
+class_prediction = predict_image(model, img_as_array)
 
 class_prediction = class_prediction.reshape(band_data[:, :, 0].shape)
 print('Reshaped back to {}'.format(class_prediction.shape))
 
-mask = np.copy(band_data[:,:,0])
-mask[mask > 0.0] = 1.0 # all actual pixels have a value of 1.0
+mask = data_mask(band_data) # all actual pixels have a value of 1.0 and the empty pixels 0
 
-class_prediction.astype(np.float16)
 class_prediction_ = class_prediction*mask
 
 plt.subplot(121)
@@ -178,6 +160,6 @@ plt.show()
 
 
 output_image = os.path.join(outputDirectory, 'CNN_{}.tiff'.format(area_name))
-write_raster(remote_sensing_data, class_prediction, band_data, output_image)
+write_raster(remote_sensing_data, class_prediction_, band_data, output_image)  ##the masked prediction is saved, the empty pixels are 0
 
 del model1
